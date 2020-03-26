@@ -7,6 +7,18 @@ import (
 	"unsafe"
 )
 
+// _TIOCGWINSZ is used to check for a terminal under linux
+const (
+	_TIOCGWINSZ = 0x5413 // OSX 1074295912
+)
+
+type winsize struct {
+	Row    uint16
+	Col    uint16
+	Xpixel uint16
+	Ypixel uint16
+}
+
 // Determine is this process is running in a Terminal or not?
 func IsTerminal() bool {
 	ws := &winsize{}
