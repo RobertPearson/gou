@@ -74,6 +74,8 @@ var (
 const (
 	// logContextPrefixKey is the context key used to store log prefixes
 	logContextPrefixKey logContextType = 1
+	// logContextFieldsKey is the context key used to store log keys
+	logContextFieldsKey logContextType = 2
 )
 
 // logContextType is the type used for logger context keys to prevent collisions with other context keys
@@ -202,6 +204,45 @@ func NewContextWrap(ctx context.Context, msg string) context.Context {
 func FromContext(ctx context.Context) string {
 	logContext, _ := ctx.Value(logContextPrefixKey).(string)
 	return logContext
+}
+
+// NewContextFields returns a new Context carrying contextual log fields
+// that get added to log statements.
+func NewContextFields(ctx context.Context, fields map[string]interface{}) context.Context {
+	// create a new map so that if the passed in map changes it doesn't affect logs
+	f := make(map[string]interface{})
+	for k, v := range fields {
+		f[k] = v
+	}
+	return context.WithValue(ctx, logContextFieldsKey, f)
+}
+
+// NewContextFieldsWrap returns a new Context carrying contextual log fields
+// that get added to log statements. New fields overwrite any existing fields
+func NewContextFieldsWrap(ctx context.Context, fields map[string]interface{}) context.Context {
+	// The parent context's map will be modified if we just add these fields to it, so
+	// create a new map
+	f := make(map[string]interface{})
+	logFields := FieldsFromContext(ctx)
+	for k, v := range logFields {
+		f[k] = v
+	}
+	for k, v := range fields {
+		f[k] = v
+	}
+	return context.WithValue(ctx, logContextFieldsKey, f)
+}
+
+// FieldsFromContext extracts the Log Context fields from context
+func FieldsFromContext(ctx context.Context) map[string]interface{} {
+	logFields, _ := ctx.Value(logContextFieldsKey).(map[string]interface{})
+	// prevent changes in the returned map from affecting the one stored
+	// in the context
+	f := make(map[string]interface{})
+	for k, v := range logFields {
+		f[k] = v
+	}
+	return f
 }
 
 // Debug logs at debug level
@@ -503,7 +544,50 @@ func Logf(logLvl int, format string, v ...interface{}) {
 	}
 }
 
-// LogFieldsf logs to the logger,it including additional context fields if a custom logger is setup
+// LogFieldsCtx logs to the logger, including additional context fields if a custom logger is setup
+func LogFieldsCtx(ctx context.Context, logLvl int, fields map[string]interface{}, format string, v ...interface{}) {
+	if LogLevel < logLvl {
+		return
+	}
+	lc := FromContext(ctx)
+	if len(lc) > 0 {
+		format = fmt.Sprintf("%s %s", lc, format)
+	}
+	// merge all the fields from context with provided fields
+	f := make(map[string]interface{})
+	lf := FieldsFromContext(ctx)
+	for k, v := range lf {
+		f[k] = v
+	}
+	for k, v := range fields {
+		f[k] = v
+	}
+	DoLogFields(3, logLvl, fmt.Sprintf(format, v...), f)
+}
+
+// LogFieldsCtxD logs to the logger, including additional context fields if a custom logger is setup,
+// with a modified stackdepth of @depth stack frames
+func LogFieldsCtxD(ctx context.Context, depth int, logLvl int, fields map[string]interface{}, format string, v ...interface{}) {
+	if LogLevel < logLvl {
+		return
+	}
+	lc := FromContext(ctx)
+	if len(lc) > 0 {
+		format = fmt.Sprintf("%s %s", lc, format)
+	}
+	// merge all the fields from context with provided fields
+	f := make(map[string]interface{})
+	lf := FieldsFromContext(ctx)
+	for k, v := range lf {
+		f[k] = v
+	}
+	for k, v := range fields {
+		f[k] = v
+	}
+	DoLogFields(depth+3, logLvl, fmt.Sprintf(format, v...), f)
+}
+
+// LogFieldsf logs to the logger, including additional context fields if a custom logger is setup
 func LogFieldsf(logLvl int, fields map[string]interface{}, format string, v ...interface{}) {
 	if LogLevel >= logLvl {
 		DoLogFields(3, logLvl, fmt.Sprintf(format, v...), fields)
